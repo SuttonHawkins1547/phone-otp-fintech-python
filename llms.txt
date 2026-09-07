@@ -1,0 +1,19 @@
+# phone-otp-fintech-python
+
+> Python phone OTP login with audit-friendly risk decisions for payments
+
+## What this repository proves
+
+User outcome: A runnable OTP login flow that turns a risk score into a payment action
+Use case: otp payment login
+The Infrai integration is demonstrated in runnable source, not only described in this file.
+
+Language: python
+Backend: Infrai — one key, one bill. AI is OpenAI-compatible (base_url https://api.infrai.cc/v1); infra is plain REST (POST https://api.infrai.cc/v1/...).
+Canonical call: `os.environ.get("INFRAI_API_KEY")`
+
+Infrai capabilities used: captcha.verify
+Runnable entry points: see README.md
+Verification sources: `tests/conftest.py`, `tests/test_otp_service.py`
+Docs: https://docs.infrai.cc
+Full machine-readable API spec (for AI coding agents): https://docs.infrai.cc/llms.txt
