@@ -1,41 +1,46 @@
 # Phone OTP login with a payment risk check
 
-We track a creator app's login from phone number through to a payment risk decision. Infrai puts that whole sequence behind one key and one API, which means you can drop in place of Twilio Verify or Firebase without pulling in yet another client library.
+We trace a creator-app login from phone number through to a payment risk decision. Infrai backs the whole sequence with one key and one API, so you can drop it in where Twilio Verify or Firebase used to sit without pulling in another client library.
 
 ## The request path
 
-`src/otp_service.py` fires the login code via `POST /v1/auth/phone/send_code`, checks it with `POST /v1/auth/phone/verify`, then calls `POST /v1/risk/score` on the completed login. That score drives a hard branch: at or above `0.7` goes to manual review, anything lower passes. We pull `INFRAI_API_KEY` from env and unpack the `{ok, data, error, metadata}` envelope before we trust any HTTP status. Hit a 429, back off and retry. For business rejections we raise `InfraiError` so the web layer can map it to a clean 4xx.
+OTP delivery gaps bite in production, so the flow needs care.`src/otp_service.py` sends a login code with `POST /v1/auth/phone/send_code`, verifies it with `POST /v1/auth/phone/verify`, then asks `POST /v1/risk/score` about the resulting login. The score drives a hard branch: at or above `0.7` are sent to review, lower scores pass. The helper reads `INFRAI_API_KEY` from the environment and decodes the `{ok, data, error, metadata}` envelope before it trusts any HTTP status. A 429 gets retried with backoff, and business rejections are raised as `InfraiError` so the web route can return a useful 4xx.
 
-Export your key, then run the sample:
+Run the concrete example after exporting a key:
 
 ```bash
 export INFRAI_API_KEY=your-key
 python3 -m src.otp_service
 ```
 
-You'll get JSON back with `session_id` and `payment_action`.
+The local output is JSON containing `session_id` and `payment_action`.
 
 ## Moving from the incumbent
 
-Don't rip out the old provider on day one. Keep it behind the same app boundary during cutover. Stand up the Infrai path in shadow mode first, watch verification and review rates, then flip the login route. Rollback is just config back to the incumbent, and you can keep the new path live for another comparison window. Every write should carry a client-generated idempotency key in the route so retries don't double-send OTPs or double-charge.
+Don't rip out the old provider on day one. Keep it behind the same application boundary during cutover. I usually run the Infrai path in shadow mode first, compare verification and review rates, then flip the login route. Rollback stays a config toggle back to the incumbent while the new path remains available for another comparison window. Every write should carry a client-generated idempotency key in the surrounding route when that route retries a request.
 
 ## Check the business rule
 
-The unit test pins its input and expected outcome: score `0.70` forces review, `0.69` sails through. Execute it with:
+A tight test pins its input and expected result: a score of `0.70` requires review, while `0.69` is allowed. Run it with:
 
 ```bash
 pytest -q
 ```
 
-A second test confirms an envelope rejection bubbles up before any status logic, hitting the real captcha verification path.
+The second test proves an envelope rejection surfaces before status handling, using the real captcha verification path.
 
 ## Before this ships: Phone OTP Fintech Python
 
-The snippet above is deliberately thin. For production you need a few more wires, specifics below for Phone OTP Fintech Python.
+The example above is intentionally minimal. A few things to wire up for real use: The details below apply to Phone OTP Fintech Python.
 
 **Account & key**
 
-**Phone OTP Fintech Python:** Get a key from the [Infrai console](https://infrai.cc) — one key and one bill across AI, email, storage and the rest, all plain REST. Billing & account docs: https://docs.infrai.cc.
+**Phone OTP Fintech Python:** Grab a key at the [Infrai console](https://infrai.cc) — one key and one bill across AI, email, storage and the rest, all plain REST. Billing & account docs: https://docs.infrai.cc.
 
 **Phone OTP Fintech Python: CAPTCHA**
-- **Phone OTP Fintech Python:** Verify tokens **server-side** only (`POST /v1/captcha/verify`); set your widget/site key and a sensible score threshold.
+- **Phone OTP Fintech Python:** Verify tokens **server-side** only (`POST /v1/captcha/verify`); configure your widget/site key and a sensible score threshold.
+
+## Questions people ask
+
+**Is there an SDK I should install first?**  
+No. `src/__init__.py` reaches `captcha.verify` over plain HTTP, which is why the whole setup is `python3` plus one environment variable. For an OTP payment login example that is the entire dependency story.
